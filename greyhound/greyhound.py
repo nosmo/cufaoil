@@ -8,6 +8,12 @@ from bs4 import BeautifulSoup
 class LoginFailedException(Exception):
     pass
 
+class UninitialisedSessionException(Exception):
+    pass
+
+class GreyhoundResponseException(Exception):
+    pass
+
 class Greyhound:
 
     def __init__(self, account_number, pin):
@@ -56,7 +62,7 @@ class Greyhound:
         """Fetch data from the Greyhound web UI"""
 
         if not "sessionid" in self._session.cookies:
-            raise KeyError("Tried to get bin data on an uninitialised session")
+            raise UninitialisedSessionException("Tried to get bin data on an uninitialised session")
 
         raw_bin_data = {}
 
@@ -70,7 +76,7 @@ class Greyhound:
                     raw_bin_data = json.loads(jsdata_lines[0].strip().split("=")[1])
 
         if not raw_bin_data:
-            raise Exception("Couldn't find raw bin data when scraping")
+            raise GreyhoundResponseException("Couldn't find raw bin data when scraping")
 
         bin_data = self.parse_raw_data(raw_bin_data)
 

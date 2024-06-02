@@ -45,7 +45,7 @@ def run_daemon(greyhound, port, force_init=False):
 
     last_timestamps = {}
     if force_init:
-        last_timestamps = {"green": 1, "black": 1, "brown": 1}
+        last_timestamps = {"green": "1", "black": "1", "brown": "1"}
 
     start_http_server(port)
     while True:
@@ -61,8 +61,9 @@ def run_daemon(greyhound, port, force_init=False):
             else:
                 # the most recent timestamp has changed, let's emit a metric
                 if last_timestamp > last_timestamps[colour]:
-                    print(f"Saw an update for {colour} dated {last_timestamp}: {greyhound_data[colour][last_timestamp]}"
+                    print(f"Saw an update for {colour} dated {last_timestamp}: {greyhound_data[colour][last_timestamp]}")
                     g.labels(bincolour=colour).set(greyhound_data[colour][last_timestamp])
+                    last_timestamps[colour] = last_timestamp
 
         time.sleep(SLEEP_INTERVAL)
 

@@ -2,27 +2,12 @@
 
 import json
 
-import requests
 from bs4 import BeautifulSoup
 
-
-class LoginFailedException(Exception):
-    pass
+from .bincompany import *
 
 
-class UninitialisedSessionException(Exception):
-    pass
-
-
-class GreyhoundResponseException(Exception):
-    pass
-
-
-class Greyhound:
-    def __init__(self, account_number, pin):
-        self._account_number = account_number
-        self._pin = pin
-        self._session = requests.Session()
+class Greyhound(BinCompany):
 
     def login(self):
         """Get a sessionid from the Greyhound web interface"""
@@ -33,8 +18,8 @@ class Greyhound:
         post_result = self._session.post(
             "https://app.greyhound.ie/",
             data={
-                "customerNo": self._account_number,
-                "pinCode": self._pin,
+                "customerNo": self._username,
+                "pinCode": self._password,
                 "csrfmiddlewaretoken": self._session.cookies["csrftoken"],
             },
             # without this header this request will silently fail
@@ -89,7 +74,7 @@ class Greyhound:
                     raw_bin_data = json.loads(jsdata_lines[0].strip().split("=")[1])
 
         if not raw_bin_data:
-            raise GreyhoundResponseException("Couldn't find raw bin data when scraping")
+            raise BinCompanyResponseException("Couldn't find raw bin data when scraping")
 
         bin_data = self.parse_raw_data(raw_bin_data)
 

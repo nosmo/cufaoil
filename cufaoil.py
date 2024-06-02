@@ -30,6 +30,8 @@ def make_args():
                         action='store_true', help="Run as a daemon with a prometheus interface")
     parser.add_argument('--port', default=9095,
                         type=int, help="The port for the daemon to listen on")
+    parser.add_argument('--force-init', action="store_true",
+                        help="Set to force emitting a metric on startup. Otherwise the service will wait for the first update")
 
     parser.add_argument('-u', '--username', required=True, help="Account ID")
     parser.add_argument('-p', '--password', required=True, help="PIN")
@@ -37,10 +39,13 @@ def make_args():
     args = parser.parse_args()
     return args
 
-def run_daemon(greyhound, port):
+def run_daemon(greyhound, port, force_init=False):
 
     g = Gauge('cufaoil_bin_weight', 'The weight of the observed bin collection', ["bincolour"])
-    last_timestamps = {"green": "1", "black": "1", "brown": "1"}
+
+    last_timestamps = {}
+    if force_init:
+        last_timestamps = {"green": 1, "black": 1, "brown": 1}
 
     start_http_server(port)
     while True:
@@ -66,7 +71,7 @@ def main():
     g.login()
 
     if args.daemonise:
-        run_daemon(g, args.port)
+        run_daemon(g, args.port, args.force_init)
     else:
         greyhound_data = g.get_data()
 

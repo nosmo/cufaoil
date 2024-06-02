@@ -49,15 +49,19 @@ def run_daemon(greyhound, port, force_init=False):
 
     start_http_server(port)
     while True:
+        print("Checking for bin update")
         greyhound_data = greyhound.get_data()
 
         for colour, pickups in greyhound_data.items():
             last_timestamp = sorted(pickups.keys())[-1]
+
             if colour not in last_timestamps:
+                print(f"Initialising data bucket for {colour}")
                 last_timestamps[colour] = last_timestamp
             else:
                 # the most recent timestamp has changed, let's emit a metric
                 if last_timestamp > last_timestamps[colour]:
+                    print(f"Saw an update for {colour} dated {last_timestamp}: {greyhound_data[colour][last_timestamp]}"
                     g.labels(bincolour=colour).set(greyhound_data[colour][last_timestamp])
 
         time.sleep(SLEEP_INTERVAL)

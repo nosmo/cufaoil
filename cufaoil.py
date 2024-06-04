@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 #import logging - TODO
+import os.path
 import pprint
 import sys
 import time
@@ -24,6 +25,8 @@ def make_args():
     )
     parser.add_argument('-j', '--json',
                         action='store_true', help="JSON output")
+    parser.add_argument('-s', '--state-file',
+                        help="Store state in the specified file")
     parser.add_argument('-c', '--csv',
                         action='store_true', help="CSV output")
     parser.add_argument('-d', '--daemonise',
@@ -39,7 +42,8 @@ def make_args():
     args = parser.parse_args()
     return args
 
-def run_daemon(greyhound, port, force_init=False):
+
+def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
 
     g = Gauge('cufaoil_bin_weight', 'The weight of the observed bin collection', ["bincolour"])
 
@@ -47,10 +51,18 @@ def run_daemon(greyhound, port, force_init=False):
     if force_init:
         last_timestamps = {"green": "1", "black": "1", "brown": "1"}
 
+    if state_file and os.path.exists(state_file):
+        with open(state_file) as f:
+            last_timestamps = json.load(f)
+
+            if sorted(last_timestamps.keys()) != ["black", "brown", "green"]:
+                raise Exception("Loaded state file missing keys")
+
     start_http_server(port)
     while True:
         print("Checking for bin update")
-        greyhound_data = greyhound.get_data()
+        greyhound_data = greyhound_obj.get_data()
+        saw_update = False
 
         for colour, pickups in greyhound_data.items():
             last_timestamp = sorted(pickups.keys())[-1]
@@ -58,12 +70,18 @@ def run_daemon(greyhound, port, force_init=False):
             if colour not in last_timestamps:
                 print(f"Initialising data bucket for {colour}")
                 last_timestamps[colour] = last_timestamp
+                saw_update = True
             else:
                 # the most recent timestamp has changed, let's emit a metric
                 if last_timestamp > last_timestamps[colour]:
                     print(f"Saw an update for {colour} dated {last_timestamp}: {greyhound_data[colour][last_timestamp]}")
                     g.labels(bincolour=colour).set(greyhound_data[colour][last_timestamp])
                     last_timestamps[colour] = last_timestamp
+                    saw_update = True
+
+        if state_file and saw_update:
+            with open(state_file, "w") as f:
+                json.dump(last_timestamps, f)
 
         time.sleep(SLEEP_INTERVAL)
 
@@ -76,7 +94,7 @@ def main():
     g.login()
 
     if args.daemonise:
-        run_daemon(g, args.port, args.force_init)
+        run_daemon(g, args.port, args.state_file, args.force_init)
     else:
         greyhound_data = g.get_data()
 

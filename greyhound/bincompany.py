@@ -19,6 +19,8 @@ class BinCompany:
         self._password = password
         self._session = requests.Session()
 
+        self._session.headers.update({'User-Agent': 'Cú Faoil (https://github.com/nosmo/cufaoil)'})
+
     def login(self):
         raise NotImplemented
 

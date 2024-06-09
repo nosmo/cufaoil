@@ -3,7 +3,7 @@
 import argparse
 import csv
 import json
-#import logging - TODO
+import logging
 import os.path
 import pprint
 import sys
@@ -16,6 +16,7 @@ import greyhound
 # Your bin info updates once a week, this should be pretty damn
 # long. Default to checking once a day.
 SLEEP_INTERVAL = 86400
+
 
 def make_args():
 
@@ -60,21 +61,28 @@ def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
 
     start_http_server(port)
     while True:
-        print("Checking for bin update")
-        greyhound_data = greyhound_obj.get_data()
+        logging.debug("Checking for bin update")
+        try:
+            greyhound_data = greyhound_obj.get_data()
+        except Exception as e: # TODO better handling
+            logging.error("Failed to get greyhound data: {}", e.message)
+            # sleep and try again
+            time.sleep(SLEEP_INTERVAL)
+            continue
+
         saw_update = False
 
         for colour, pickups in greyhound_data.items():
             last_timestamp = sorted(pickups.keys())[-1]
 
             if colour not in last_timestamps:
-                print(f"Initialising data bucket for {colour}")
+                logging.info(f"Initialising data bucket for {colour}")
                 last_timestamps[colour] = last_timestamp
                 saw_update = True
             else:
                 # the most recent timestamp has changed, let's emit a metric
                 if last_timestamp > last_timestamps[colour]:
-                    print(f"Saw an update for {colour} dated {last_timestamp}: {greyhound_data[colour][last_timestamp]}")
+                    logging.info(f"Saw an update for {colour} dated {last_timestamp}: {greyhound_data[colour][last_timestamp]}")
                     g.labels(bincolour=colour).set(greyhound_data[colour][last_timestamp])
                     last_timestamps[colour] = last_timestamp
                     saw_update = True
@@ -88,10 +96,13 @@ def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
 
 def main():
 
+    logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
+
     args = make_args()
 
     g = greyhound.Greyhound(args.username, args.password)
     g.login()
+    logging.debug("Finished login")
 
     if args.daemonise:
         run_daemon(g, args.port, args.state_file, args.force_init)

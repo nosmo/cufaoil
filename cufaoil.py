@@ -11,7 +11,7 @@ import time
 
 from prometheus_client import start_http_server, Gauge
 
-import greyhound
+from cufaoil import greyhound
 
 # Your bin info updates once a week, this should be pretty damn
 # long. Default to checking once a day.
@@ -45,6 +45,8 @@ def make_args():
 
 
 def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
+
+    # TODO - compute monthly average
 
     g = Gauge('cufaoil_bin_weight', 'The weight of the observed bin collection', ["bincolour"])
 

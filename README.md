@@ -19,6 +19,13 @@ cufaoil_bin_weight{bincolour="black"} 3.0
 ```
 Graphing this data is the main reason I wrote this tool. It's dumb as hell and I love it. Fight me.
 
+Adding a new company
+--------
+Once you've figured out the URLs and HTTP actions required for your bin company, simply implement `login()` and `get_data()` in the `cufaoil` module.
+
+Known difficult companies:
+* Citybin uses Recaptcha on logins
+
 Dumping bin info
 --------
 When no other arguments are provided, a simple pretty-print of the data is emitted. `-c` and `-j` CSVify and JSONise the output respectively.

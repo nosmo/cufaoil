@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import datetime
 import json
 import logging
 import os.path
@@ -44,22 +45,41 @@ def make_args():
     return args
 
 
+def should_reset(sleep_window) -> bool:
+    """Are we within the time window that would warrant us reinitialising the total bucket?"""
+
+    now = datetime.datetime.now()
+    start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    min_time = start_of_month - datetime.timedelta(seconds=sleep_window)
+    max_time = start_of_month + datetime.timedelta(seconds=sleep_window)
+
+    if min_time < now and now < max_time:
+        return True
+    else:
+        return False
+
+
 def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
 
-    # TODO - compute monthly average
+    weight_g = Gauge('cufaoil_bin_weight',
+                     'The weight of the observed bin collection', ["bincolour"])
+    avg_g = Gauge('cufaoil_bin_monthly',
+                  'Total bin weight over the last month', ["bincolour"])
 
-    g = Gauge('cufaoil_bin_weight', 'The weight of the observed bin collection', ["bincolour"])
-
+    month_totals = {}
     last_timestamps = {}
+
     if force_init:
         last_timestamps = {"green": "1", "black": "1", "brown": "1"}
 
     if state_file and os.path.exists(state_file):
         with open(state_file) as f:
-            last_timestamps = json.load(f)
+            state_data = json.load(f)
 
-            if sorted(last_timestamps.keys()) != ["black", "brown", "green"]:
+            if sorted(state_data.keys()) != ["black", "brown", "green"]:
                 raise Exception("Loaded state file missing keys")
+
+            #TODO load rolling total
 
     start_http_server(port)
     while True:
@@ -84,14 +104,31 @@ def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
             else:
                 # the most recent timestamp has changed, let's emit a metric
                 if last_timestamp > last_timestamps[colour]:
-                    logging.info(f"Saw an update for {colour} dated {last_timestamp}: {greyhound_data[colour][last_timestamp]}")
-                    g.labels(bincolour=colour).set(greyhound_data[colour][last_timestamp])
+
+                    weight = pickups[last_timestamp]
+
+                    logging.info(f"Saw an update for {colour} dated {last_timestamp}: {weight}")
+                    weight_g.labels(bincolour=colour).set(weight)
                     last_timestamps[colour] = last_timestamp
                     saw_update = True
 
-        if state_file and saw_update:
-            with open(state_file, "w") as f:
-                json.dump(last_timestamps, f)
+                    if colour in month_totals:
+                        month_totals[colour] += weight
+                    else:
+                        month_totals[colour] = weight
+                    logging.info(f"Updated total for {colour} to {month_totals[colour]}")
+                    avg_g.labels(bincolour=colour).set(month_totals[colour])
+
+
+        if saw_update:
+            if state_file:
+                with open(state_file, "w") as f:
+                    json.dump(last_timestamps, f)
+                #TODO save total
+
+            if should_reset(SLEEP_INTERVAL):
+                logging.info("Resetting monthly totals")
+                month_totals = {}
 
         time.sleep(SLEEP_INTERVAL)
 

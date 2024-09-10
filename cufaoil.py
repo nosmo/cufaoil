@@ -50,8 +50,8 @@ def should_reset(sleep_window) -> bool:
 
     now = datetime.datetime.now()
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    min_time = start_of_month - datetime.timedelta(seconds=sleep_window)
-    max_time = start_of_month + datetime.timedelta(seconds=sleep_window)
+    min_time = start_of_month - datetime.timedelta(seconds=sleep_window/2.0)
+    max_time = start_of_month + datetime.timedelta(seconds=sleep_window/2.0)
 
     if min_time < now and now < max_time:
         return True
@@ -80,6 +80,7 @@ def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
                 raise Exception("Loaded state file missing keys")
 
             #TODO load rolling total
+
 
     start_http_server(port)
     while True:
@@ -128,7 +129,8 @@ def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
 
             if should_reset(SLEEP_INTERVAL):
                 logging.info("Resetting monthly totals")
-                month_totals = {}
+                for key, val in month_totals.items():
+                    month_totals[key] = 0
 
         time.sleep(SLEEP_INTERVAL)
 

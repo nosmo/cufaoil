@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 import argparse
+import collections
+import copy
 import csv
 import datetime
 import json
@@ -36,7 +38,8 @@ def make_args():
     parser.add_argument('--port', default=9095,
                         type=int, help="The port for the daemon to listen on")
     parser.add_argument('--force-init', action="store_true",
-                        help="Set to force emitting a metric on startup. Otherwise the service will wait for the first update")
+                        help=("Set to force emitting a metric on startup. "
+                              "Otherwise the service will wait for the first update"))
 
     parser.add_argument('-u', '--username', required=True, help="Account ID")
     parser.add_argument('-p', '--password', required=True, help="PIN")
@@ -53,34 +56,75 @@ def should_reset(sleep_window) -> bool:
     min_time = start_of_month - datetime.timedelta(seconds=sleep_window/2.0)
     max_time = start_of_month + datetime.timedelta(seconds=sleep_window/2.0)
 
-    if min_time < now and now < max_time:
+    return bool(min_time < now and now < max_time)
+
+class Statefile:
+
+    def __init__(self, filename):
+        self.filename = filename
+
+        self.state = {}
+        self.month_totals = collections.defaultdict(int)
+
+        self.reload()
+
+    def __setitem__(self, key, val):
+        self.state[key] = val
+
+        self.month_totals[key] += val
+
+    def __getitem__(self, key):
+        return self.state[key]
+
+    def total(self, colour):
+        return self.month_totals[colour]
+
+    def reset_totals(self):
+        """Reset month totals to whatever the current weight is set to"""
+        #TODO this is the wrong approach
+
+        for colour, weight in self.state.items():
+            self.month_totals[colour] = weight
+
+    def reload(self):
+        if os.path.exists(self.filename):
+            with open(self.filename) as f:
+                for key, val in json.load(f).items():
+                    if key == "month_totals":
+                        self.month_totals = val
+                    else:
+                        self.state[key] = val
+                self._validate()
+
+        # if file doesn't exist, default to empty state dict
+
+    def save(self):
+        with open(self.filename, "w") as f:
+            output_dict = copy.copy(self.state)
+            output_dict["month_totals"] = self.month_totals
+            json.dump(output_dict, f)
+
+    def _validate(self) -> bool:
+        if sorted(self.state.keys()) != ["black", "brown", "green", "month_total"]:
+            raise Exception("Loaded state file missing keys")
+
         return True
-    else:
-        return False
 
-
-def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
+def run_daemon(greyhound_obj, port, state_file_path=None, force_init=False):
 
     weight_g = Gauge('cufaoil_bin_weight',
                      'The weight of the observed bin collection', ["bincolour"])
     avg_g = Gauge('cufaoil_bin_monthly',
                   'Total bin weight over the last month', ["bincolour"])
 
-    month_totals = {}
     last_timestamps = {}
 
     if force_init:
         last_timestamps = {"green": "1", "black": "1", "brown": "1"}
 
-    if state_file and os.path.exists(state_file):
-        with open(state_file) as f:
-            state_data = json.load(f)
-
-            if sorted(state_data.keys()) != ["black", "brown", "green"]:
-                raise Exception("Loaded state file missing keys")
-
-            #TODO load rolling total
-
+    state_file = None
+    if state_file_path:
+        state_file = Statefile(state_file_path)
 
     start_http_server(port)
     while True:
@@ -113,24 +157,19 @@ def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
                     last_timestamps[colour] = last_timestamp
                     saw_update = True
 
-                    if colour in month_totals:
-                        month_totals[colour] += weight
-                    else:
-                        month_totals[colour] = weight
-                    logging.info(f"Updated total for {colour} to {month_totals[colour]}")
-                    avg_g.labels(bincolour=colour).set(month_totals[colour])
-
+                    if state_file:
+                        state_file[colour] = weight
+                        colour_total = state_file.total(colour)
+                        logging.info(f"Updated total for {colour} to {colour_total}")
+                        avg_g.labels(bincolour=colour).set(colour_total)
 
         if saw_update:
             if state_file:
-                with open(state_file, "w") as f:
-                    json.dump(last_timestamps, f)
-                #TODO save total
+                state_file.save()
 
             if should_reset(SLEEP_INTERVAL):
                 logging.info("Resetting monthly totals")
-                for key, val in month_totals.items():
-                    month_totals[key] = 0
+                state_file.reset_totals()
 
         time.sleep(SLEEP_INTERVAL)
 

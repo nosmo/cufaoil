@@ -75,6 +75,10 @@ def run_daemon(greyhound_obj, port, state_file=None, force_init=False):
         saw_update = False
 
         for colour, pickups in greyhound_data.items():
+            if not pickups:
+                logging.info(f"Saw no data for {colour} - skipping (new year maybe?)")
+                continue
+
             last_timestamp = sorted(pickups.keys())[-1]
 
             if colour not in last_timestamps:
